@@ -1,96 +1,135 @@
-use std::{collections::HashMap, fs::File, io::Write};
+//! # Structnmap
+//!
+//! `structnmap` is a tool for parsing nmap xml and structing it to files by service name.
+
+use std::{collections::HashMap, fs::File, io::Write, path::Path};
+
+use parsenmap::models::scan::{FileType, Scan};
 
 #[derive(Debug)]
-pub struct Data {
-    pub raws: Vec<TableRaw>,
-    pub protocol_map: HashMap<String, ProtocolValue>,
-}
-
-impl Data {
-    pub fn build(file: String) -> Self {
-        let raws = file.split("\n").collect::<Vec<&str>>();
-        let mut raws_vec: Vec<TableRaw> = Vec::new();
-        for raw in raws {
-            if let Some(raw_vec) = TableRaw::new(&raw.to_string()) {
-                raws_vec.push(raw_vec);
-            }
-        }
-        let mut protocol_map: HashMap<String, ProtocolValue> = HashMap::new();
-        for raw in &raws_vec {
-            if let Some(p_value) = protocol_map.get_mut(&raw.protocol) {
-                if !p_value.ports.contains(&raw.port) {
-                    p_value.ports.push(raw.port.clone());
-                }
-                if !p_value.hosts.contains(&raw.host) {
-                    p_value.hosts.push(raw.host.clone());
-                }
-            } else {
-                let mut p_value = ProtocolValue::new();
-                p_value.ports.push(raw.port.clone());
-                p_value.hosts.push(raw.host.clone());
-                protocol_map.insert(raw.protocol.clone(), p_value);
-            }
-        }
-        Data {
-            raws: raws_vec,
-            protocol_map,
-        }
-    }
-
-    pub fn generate(&self, save_path: &str) {
-        let mut hosts_map_file = File::create(format!("{}/hosts_map.txt", save_path)).unwrap();
-        let mut file_buf_str: String = String::new();
-        for key in self.protocol_map.keys() {
-            let value = self.protocol_map.get(key).unwrap();
-            let mut hosts_file = File::create(format!("{}/{}.txt", save_path, key)).unwrap();
-            let hosts_buf = value.hosts.join("\n");
-            hosts_file.write(&hosts_buf.as_bytes()).unwrap();
-            let ports_buf = value.ports.join(", ");
-            file_buf_str += &format!(
-                "File: {}.txt\nProtocol: {}\nPorts: {}\n\n",
-                key, key, &ports_buf
-            );
-        }
-        hosts_map_file.write(&file_buf_str.as_bytes()).unwrap();
-    }
-}
-
-#[derive(Debug)]
-pub struct TableRaw {
-    port: String,
-    protocol: String,
-    host: String,
-}
-
-impl TableRaw {
-    fn new(raw: &str) -> Option<Self> {
-        let raw_vec: Vec<String> = raw.split("\t").map(|s| s.to_lowercase()).collect();
-        if raw_vec.len() > 3
-            && !raw_vec[1].is_empty()
-            && !raw_vec[2].is_empty()
-            && raw_vec[2] != "unknown"
-        {
-            Some(TableRaw {
-                port: raw_vec[1].clone(),
-                protocol: raw_vec[2].clone(),
-                host: raw_vec[0].clone(),
-            })
-        } else {
-            None
-        }
-    }
-}
-#[derive(Debug, Clone)]
-pub struct ProtocolValue {
+pub struct Service {
     ports: Vec<String>,
     hosts: Vec<String>,
 }
 
-impl ProtocolValue {
+impl Service {
     fn new() -> Self {
         Self {
             ports: Vec::new(),
             hosts: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct Error {
+    pub message: String,
+}
+
+impl From<std::io::Error> for Error {
+    fn from(message: std::io::Error) -> Self {
+        Self {
+            message: message.to_string(),
+        }
+    }
+}
+
+impl From<&str> for Error {
+    fn from(message: &str) -> Self {
+        Self {
+            message: message.to_string(),
+        }
+    }
+}
+
+impl From<parsenmap::error::ParsenmapError> for Error {
+    fn from(e: parsenmap::error::ParsenmapError) -> Self {
+        Self { message: e.err }
+    }
+}
+
+#[derive(Debug)]
+pub struct Data {
+    pub scan: Scan,
+    pub structed_service: HashMap<String, Service>,
+}
+
+impl Data {
+    ///
+    /// Generates organized structure of hosts by service name
+    ///
+    pub fn build(xml_path: &str) -> Result<Self, Error> {
+        let mut structed_service: HashMap<String, Service> = HashMap::new();
+        match parsenmap::parse(&xml_path) {
+            Ok(scan) => {
+                let hosts_count = scan
+                    .hosts
+                    .iter()
+                    .map(|h| h.addrs.len())
+                    .reduce(|a, b| a + b)
+                    .unwrap();
+                if hosts_count > 0 {
+                    for host in &scan.hosts {
+                        let mut ipv4 = String::new();
+                        for addr in &host.addrs {
+                            if addr.kind == "ipv4" {
+                                ipv4 = addr.addr.clone();
+                            }
+                        }
+                        for port in &host.ports {
+                            if structed_service.contains_key(&port.service.name) {
+                                let service = structed_service.get_mut(&port.service.name).unwrap();
+                                if !service.ports.contains(&port.port) {
+                                    service.ports.push(port.port.clone());
+                                }
+                                if !service.hosts.contains(&ipv4) {
+                                    service.hosts.push(ipv4.clone());
+                                }
+                            } else {
+                                let mut new_service = Service::new();
+                                new_service.ports.push(port.port.clone());
+                                new_service.hosts.push(ipv4.clone());
+                                structed_service.insert(port.service.name.clone(), new_service);
+                            }
+                        }
+                    }
+                    return Ok(Data {
+                        structed_service,
+                        scan,
+                    });
+                } else {
+                    return Err(Error::from("There are no hosts in your xml"));
+                }
+            }
+            Err(e) => return Err(Error::from(e)),
+        };
+    }
+
+    ///
+    /// Generates all files
+    ///
+    pub fn generate(&self, save_path: &str) -> Result<(), Error> {
+        let path = Path::new(save_path);
+        if path.exists() {
+            let mut hosts_map_file = File::create(format!("{}/hosts-map.txt", save_path))?;
+            let mut file_buf_str: String = String::new();
+            for service_name in self.structed_service.keys() {
+                let value = self.structed_service.get(service_name).unwrap();
+                let mut hosts_file = File::create(format!("{}/{}.txt", save_path, service_name))?;
+                let hosts_buf = value.hosts.join("\n");
+                hosts_file.write(&hosts_buf.as_bytes())?;
+                let ports_buf = value.ports.join(", ");
+                file_buf_str += &format!(
+                    "File: {}.txt\nProtocol: {}\nPorts: {}\n\n",
+                    service_name, service_name, &ports_buf
+                );
+            }
+            hosts_map_file.write(&file_buf_str.as_bytes())?;
+            self.scan
+                .write_to_file(FileType::CSV, &format!("{}/all-ports.csv", save_path));
+            Ok(())
+        } else {
+            return Err(Error::from("Path is not exist"));
         }
     }
 }

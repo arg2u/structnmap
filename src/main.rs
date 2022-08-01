@@ -1,38 +1,28 @@
-use std::env;
-use std::fs::read_to_string;
-use std::path::Path;
+use std::path::PathBuf;
 
-use structnmap::Data;
-fn main() {
-    let args: Vec<String> = env::args().collect();
-    if args.len() >= 3 {
-        let read_path = &args[1];
-        if Path::new(read_path).exists() {
-            let save_path = &args[2];
-            if Path::new(save_path).exists() {
-                let file = read_to_string(read_path).unwrap();
-                let data = Data::build(file);
-                data.generate(&save_path);
-            } else {
-                eprintln!("\nIncorrect output dir path.\n")
-            }
-        } else {
-            eprintln!("\nIncorrect file path specified for reading.\n")
-        }
-    } else if args.len() > 1 {
-        let arg = &args[1];
-        if arg == "-h" || arg.contains("help") {
-            println!("========================================");
-            println!("Table must have this structure:");
-            println!("========================================");
-            println!("||===IP===||===PORT===||===PROTOCOL===||");
-            println!("||10.0.0.0||   2222   ||      SSH     ||");
-            println!("========================================");
-            println!("Example:");
-            println!("========================================");
-            println!("structnmap <table_path> <output_dir_path>");
-        }
-    } else {
-        eprintln!("\nIncorrect arguments.\nstructnmap -h for more information")
-    }
+use structnmap::{Data, Error};
+use structopt;
+use structopt::StructOpt;
+
+#[allow(unused)]
+#[derive(Debug, StructOpt)]
+#[structopt(
+    name = "Structnmap",
+    about = "This is a tool for parsing nmap xml and structing it to files by service name."
+)]
+struct Opt {
+    /// Nmap xml file path
+    #[structopt(parse(from_os_str))]
+    xml: PathBuf,
+    /// Output directory
+    #[structopt(parse(from_os_str))]
+    output: PathBuf,
+}
+fn main() -> Result<(), Error> {
+    let opt = Opt::from_args();
+    let output = opt.output;
+    let xml = opt.xml;
+    let test = Data::build(xml.to_str().unwrap())?;
+    test.generate(output.to_str().unwrap())?;
+    Ok(())
 }

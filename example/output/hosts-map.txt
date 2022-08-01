@@ -1,0 +1,68 @@
+File: ms-wbt-server.txt
+Protocol: ms-wbt-server
+Ports: 3389
+
+File: jenkins-listener.txt
+Protocol: jenkins-listener
+Ports: 5001
+
+File: ldap.txt
+Protocol: ldap
+Ports: 389, 3268
+
+File: ssh.txt
+Protocol: ssh
+Ports: 22
+
+File: mc-nmf.txt
+Protocol: mc-nmf
+Ports: 9389
+
+File: tcpwrapped.txt
+Protocol: tcpwrapped
+Ports: 636, 3269
+
+File: domain.txt
+Protocol: domain
+Ports: 53
+
+File: microsoft-ds.txt
+Protocol: microsoft-ds
+Ports: 445
+
+File: msrpc.txt
+Protocol: msrpc
+Ports: 135, 49664, 49667, 49668, 58841, 63240, 63252, 2103, 2105, 2107, 49691
+
+File: ms-sql-s.txt
+Protocol: ms-sql-s
+Ports: 1433
+
+File: msmq.txt
+Protocol: msmq
+Ports: 1801
+
+File: netbios-ssn.txt
+Protocol: netbios-ssn
+Ports: 139
+
+File: ncacn_http.txt
+Protocol: ncacn_http
+Ports: 593, 63239
+
+File: http.txt
+Protocol: http
+Ports: 5985, 8080, 80
+
+File: ajp13.txt
+Protocol: ajp13
+Ports: 8009
+
+File: kerberos-sec.txt
+Protocol: kerberos-sec
+Ports: 88
+
+File: kpasswd5.txt
+Protocol: kpasswd5
+Ports: 464
+
